@@ -8,11 +8,20 @@
     <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-    <div id="hal-container">
-        <div id="hal-eye"></div>
+    <div class="panel">
+        <div class="nameplate">Hal 9000</div>
+        <div class="base">
+            <div class="lens" id="hal-container">
+                <div class="reflections"></div>
+            </div>
+            <div class="animation"></div>
+        </div>
+        <div class="speaker"></div>
+        <label class="switch">
+            <input type="checkbox" id="powerSwitch">
+            <span class="slider"></span>
+        </label>
     </div>
-    <button id="startBtn">Start</button>
-    <button id="stopBtn" disabled>Stop</button>
     <script src="/app.js"></script>
 </body>
 </html>
