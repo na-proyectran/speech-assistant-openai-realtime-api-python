@@ -9,7 +9,8 @@ const stopBtn = document.getElementById('stopBtn');
 const hal = document.getElementById('hal-container');
 
 startBtn.addEventListener('click', async () => {
-    ws = new WebSocket(`ws://${location.host}/ws`);
+    const wsProtocol = location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(`${wsProtocol}://${location.host}/ws`);
     ws.onmessage = handleMessage;
     await startAudio();
     startBtn.disabled = true;
