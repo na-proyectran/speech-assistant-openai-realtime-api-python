@@ -7,23 +7,20 @@ let pulseTimeout;
 let nextPlaybackTime = 0;
 let activeSources = [];
 
-const startBtn = document.getElementById('startBtn');
-const stopBtn = document.getElementById('stopBtn');
-const hal = document.getElementById('hal-container');
+const killSwitch = document.getElementById('killSwitch');
+const hal = document.querySelector('.base');
 
-startBtn.addEventListener('click', async () => {
-    ws = new WebSocket(`ws://${location.host}/ws`);
-    ws.onmessage = handleMessage;
-    await startAudio();
-    startBtn.disabled = true;
-    stopBtn.disabled = false;
-});
-
-stopBtn.addEventListener('click', () => {
-    stopAudio();
-    ws.close();
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
+killSwitch.addEventListener('change', async () => {
+    if (killSwitch.checked) {
+        ws = new WebSocket(`ws://${location.host}/ws`);
+        ws.onmessage = handleMessage;
+        await startAudio();
+    } else {
+        stopAudio();
+        if (ws) {
+            ws.close();
+        }
+    }
 });
 
 function handleMessage(event) {
