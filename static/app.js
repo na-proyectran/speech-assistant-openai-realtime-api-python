@@ -10,16 +10,29 @@ let activeSources = [];
 const killSwitch = document.getElementById('killSwitch');
 const hal = document.querySelector('.base');
 
+async function connect() {
+    ws = new WebSocket(`ws://${location.host}/ws`);
+    ws.onmessage = handleMessage;
+    await startAudio();
+}
+
+function disconnect() {
+    stopAudio();
+    if (ws) {
+        ws.close();
+        ws = null;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    connect();
+});
+
 killSwitch.addEventListener('change', async () => {
     if (killSwitch.checked) {
-        ws = new WebSocket(`ws://${location.host}/ws`);
-        ws.onmessage = handleMessage;
-        await startAudio();
+        disconnect();
     } else {
-        stopAudio();
-        if (ws) {
-            ws.close();
-        }
+        await connect();
     }
 });
 
