@@ -8,7 +8,7 @@ let nextPlaybackTime = 0;
 
 const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
-const hal = document.getElementById('hal-container');
+const hal = document.querySelector('.base');
 
 startBtn.addEventListener('click', async () => {
     ws = new WebSocket(`ws://${location.host}/ws`);
