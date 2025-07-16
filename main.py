@@ -8,6 +8,7 @@ from fastapi import FastAPI, WebSocket
 from fastapi.responses import JSONResponse
 from fastapi.websockets import WebSocketDisconnect
 from dotenv import load_dotenv
+from datetime import datetime
 
 load_dotenv()
 
@@ -36,6 +37,17 @@ SHOW_TIMING_MATH = False
 from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
+
+# Function calling setup
+def get_current_time() -> dict:
+    """Return the current time in ISO format."""
+    return {"current_time": datetime.utcnow().isoformat()}
+
+# Registered functions by name
+FUNCTIONS = {"get_current_time": get_current_time}
+
+# Track function call data by item_id
+pending_calls: dict[str, dict] = {}
 
 if not OPENAI_API_KEY:
     raise ValueError("Missing the OpenAI API key. Please set it in the .env file.")
@@ -92,6 +104,44 @@ async def handle_media_stream(websocket: WebSocket):
                     if response["type"] in LOG_EVENT_TYPES:
                         print(f"Received event: {response['type']}", response)
 
+                    if response.get("type") == "conversation.item.created" and response.get("item", {}).get("type") == "function_call":
+                        item = response["item"]
+                        pending_calls[item["id"]] = {
+                            "call_id": item["call_id"],
+                            "name": item["name"],
+                            "arguments": "",
+                        }
+
+                    if response.get("type") == "response.function_call_arguments.delta":
+                        item_id = response.get("item_id")
+                        delta = response.get("delta", "")
+                        if item_id in pending_calls:
+                            pending_calls[item_id]["arguments"] += delta
+
+                    if response.get("type") == "response.output_item.done":
+                        item = response.get("item", {})
+                        if item.get("type") == "function_call" and item.get("id") in pending_calls:
+                            call = pending_calls.pop(item["id"])
+                            func = FUNCTIONS.get(call["name"])
+                            if func:
+                                try:
+                                    args = json.loads(call["arguments"] or "{}")
+                                except json.JSONDecodeError:
+                                    args = {}
+                                result = func(**args)
+                            else:
+                                result = {"error": f"Unknown function {call['name']}"}
+                            output_event = {
+                                "type": "conversation.item.create",
+                                "item": {
+                                    "type": "function_call_output",
+                                    "call_id": call["call_id"],
+                                    "output": json.dumps(result),
+                                },
+                            }
+                            await openai_ws.send(json.dumps(output_event))
+                            await openai_ws.send(json.dumps({"type": "response.create"}))
+
                     if response.get("type") == "input_audio_buffer.speech_started":
                         await websocket.send_json({"event": "clear"})
 
@@ -144,6 +194,14 @@ async def initialize_session(openai_ws):
             "instructions": SYSTEM_MESSAGE,
             "modalities": ["text", "audio"],
             "temperature": 0.8,
+            "tools": [
+                {
+                    "type": "function",
+                    "name": "get_current_time",
+                    "description": "Return the current UTC time",
+                    "parameters": {"type": "object", "properties": {}},
+                }
+            ],
         },
     }
     print("Sending session update:", json.dumps(session_update))

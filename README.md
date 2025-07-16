@@ -46,5 +46,6 @@ docker compose up --build
 - Streams audio to and from the OpenAI Realtime API
 - Optional initial greeting (see `send_initial_conversation_item` in `main.py`)
 - Basic interruption handling when you talk over HAL
+- Demonstrates Realtime API function calling with a `get_current_time` tool
 
 Have fun—and remember, HAL is always listening.
