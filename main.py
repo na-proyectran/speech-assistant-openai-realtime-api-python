@@ -8,7 +8,7 @@ from fastapi import FastAPI, WebSocket
 from fastapi.responses import JSONResponse
 from fastapi.websockets import WebSocketDisconnect
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import datetime, timezone
 
 load_dotenv()
 
@@ -40,11 +40,26 @@ app = FastAPI()
 
 # Function calling setup
 def get_current_time() -> dict:
-    """Return the current time in ISO format."""
-    return {"current_time": datetime.utcnow().isoformat()}
+    """Return the current UTC time in ISO 8601 format with a Z suffix."""
+    now = datetime.now(tz=timezone.utc)
+    return {"current_time": now.isoformat().replace("+00:00", "Z")}
+
+
+async def hal9000_system_analysis(mode: str = "simple") -> dict:
+    """Simulate a HAL 9000 style system analysis."""
+    total = 20 if mode == "simple" else 60
+    for elapsed in range(0, total, 5):
+        progress = int((elapsed / total) * 100)
+        print(f"HAL 9000 system analysis {mode}: {progress}%")
+        await asyncio.sleep(5)
+    print(f"HAL 9000 system analysis {mode}: 100%")
+    return {"status": "completed", "mode": mode, "duration": total}
 
 # Registered functions by name
-FUNCTIONS = {"get_current_time": get_current_time}
+FUNCTIONS = {
+    "get_current_time": get_current_time,
+    "hal9000_system_analysis": hal9000_system_analysis,
+}
 
 # Track function call data by item_id
 pending_calls: dict[str, dict] = {}
@@ -128,7 +143,10 @@ async def handle_media_stream(websocket: WebSocket):
                                     args = json.loads(call["arguments"] or "{}")
                                 except json.JSONDecodeError:
                                     args = {}
-                                result = func(**args)
+                                if asyncio.iscoroutinefunction(func):
+                                    result = await func(**args)
+                                else:
+                                    result = func(**args)
                             else:
                                 result = {"error": f"Unknown function {call['name']}"}
                             output_event = {
@@ -200,7 +218,22 @@ async def initialize_session(openai_ws):
                     "name": "get_current_time",
                     "description": "Return the current UTC time",
                     "parameters": {"type": "object", "properties": {}},
-                }
+                },
+                {
+                    "type": "function",
+                    "name": "hal9000_system_analysis",
+                    "description": "Simulate a HAL 9000 system analysis",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "mode": {
+                                "type": "string",
+                                "enum": ["simple", "exhaustivo"],
+                                "default": "simple",
+                            }
+                        },
+                    },
+                },
             ],
         },
     }
