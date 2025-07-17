@@ -8,6 +8,7 @@ from fastapi import FastAPI, WebSocket
 from fastapi.responses import JSONResponse
 from fastapi.websockets import WebSocketDisconnect
 from dotenv import load_dotenv
+from datetime import datetime, timezone
 
 load_dotenv()
 
@@ -36,6 +37,42 @@ SHOW_TIMING_MATH = False
 from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
+
+# Function calling setup
+def get_current_time() -> dict:
+    """Return the current UTC time in ISO 8601 format with a Z suffix."""
+    now = datetime.now(tz=timezone.utc)
+    return {"current_time": now.isoformat().replace("+00:00", "Z")}
+
+
+async def hal9000_system_analysis(
+    mode: str = "simple", progress_cb=None
+) -> dict:
+    """Simulate a HAL 9000 style system analysis.
+
+    Progress is reported every 10 seconds via the optional ``progress_cb``
+    callback if provided.
+    """
+    total = 20 if mode == "simple" else 60
+    for elapsed in range(0, total, 10):
+        progress = int((elapsed / total) * 100)
+        print(f"HAL 9000 system analysis {mode}: {progress}%")
+        if progress_cb:
+            await progress_cb(progress, mode)
+        await asyncio.sleep(10)
+    print(f"HAL 9000 system analysis {mode}: 100%")
+    if progress_cb:
+        await progress_cb(100, mode)
+    return {"status": "completed", "mode": mode, "duration": total}
+
+# Registered functions by name
+FUNCTIONS = {
+    "get_current_time": get_current_time,
+    "hal9000_system_analysis": hal9000_system_analysis,
+}
+
+# Track function call data by item_id
+pending_calls: dict[str, dict] = {}
 
 if not OPENAI_API_KEY:
     raise ValueError("Missing the OpenAI API key. Please set it in the .env file.")
@@ -92,6 +129,64 @@ async def handle_media_stream(websocket: WebSocket):
                     if response["type"] in LOG_EVENT_TYPES:
                         print(f"Received event: {response['type']}", response)
 
+                    if response.get("type") == "conversation.item.created" and response.get("item", {}).get("type") == "function_call":
+                        item = response["item"]
+                        pending_calls[item["id"]] = {
+                            "call_id": item["call_id"],
+                            "name": item["name"],
+                            "arguments": "",
+                        }
+
+                    if response.get("type") == "response.function_call_arguments.delta":
+                        item_id = response.get("item_id")
+                        delta = response.get("delta", "")
+                        if item_id in pending_calls:
+                            pending_calls[item_id]["arguments"] += delta
+
+                    if response.get("type") == "response.output_item.done":
+                        item = response.get("item", {})
+                        if item.get("type") == "function_call" and item.get("id") in pending_calls:
+                            call = pending_calls.pop(item["id"])
+                            func = FUNCTIONS.get(call["name"])
+                            if func:
+                                try:
+                                    args = json.loads(call["arguments"] or "{}")
+                                except json.JSONDecodeError:
+                                    args = {}
+                                async def progress_cb(progress: int, mode: str):
+                                    progress_event = {
+                                        "type": "conversation.item.create",
+                                        "item": {
+                                            "type": "message",
+                                            "role": "assistant",
+                                            "content": [
+                                                {
+                                                    "type": "text",
+                                                    "text": f"HAL 9000 system analysis {mode}: {progress}%",
+                                                }
+                                            ],
+                                        },
+                                    }
+                                    await openai_ws.send(json.dumps(progress_event))
+                                    await openai_ws.send(json.dumps({"type": "response.create"}))
+
+                                if asyncio.iscoroutinefunction(func):
+                                    result = await func(progress_cb=progress_cb, **args)
+                                else:
+                                    result = func(progress_cb=progress_cb, **args)
+                            else:
+                                result = {"error": f"Unknown function {call['name']}"}
+                            output_event = {
+                                "type": "conversation.item.create",
+                                "item": {
+                                    "type": "function_call_output",
+                                    "call_id": call["call_id"],
+                                    "output": json.dumps(result),
+                                },
+                            }
+                            await openai_ws.send(json.dumps(output_event))
+                            await openai_ws.send(json.dumps({"type": "response.create"}))
+
                     if response.get("type") == "input_audio_buffer.speech_started":
                         await websocket.send_json({"event": "clear"})
 
@@ -144,6 +239,29 @@ async def initialize_session(openai_ws):
             "instructions": SYSTEM_MESSAGE,
             "modalities": ["text", "audio"],
             "temperature": 0.8,
+            "tools": [
+                {
+                    "type": "function",
+                    "name": "get_current_time",
+                    "description": "Return the current UTC time",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+                {
+                    "type": "function",
+                    "name": "hal9000_system_analysis",
+                    "description": "Simulate a HAL 9000 system analysis",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "mode": {
+                                "type": "string",
+                                "enum": ["simple", "exhaustivo"],
+                                "default": "simple",
+                            }
+                        },
+                    },
+                },
+            ],
         },
     }
     print("Sending session update:", json.dumps(session_update))
