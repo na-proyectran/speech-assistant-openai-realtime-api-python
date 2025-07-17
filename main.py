@@ -45,14 +45,24 @@ def get_current_time() -> dict:
     return {"current_time": now.isoformat().replace("+00:00", "Z")}
 
 
-async def hal9000_system_analysis(mode: str = "simple") -> dict:
-    """Simulate a HAL 9000 style system analysis."""
+async def hal9000_system_analysis(
+    mode: str = "simple", progress_cb=None
+) -> dict:
+    """Simulate a HAL 9000 style system analysis.
+
+    Progress is reported every 10 seconds via the optional ``progress_cb``
+    callback if provided.
+    """
     total = 20 if mode == "simple" else 60
-    for elapsed in range(0, total, 5):
+    for elapsed in range(0, total, 10):
         progress = int((elapsed / total) * 100)
         print(f"HAL 9000 system analysis {mode}: {progress}%")
-        await asyncio.sleep(5)
+        if progress_cb:
+            await progress_cb(progress, mode)
+        await asyncio.sleep(10)
     print(f"HAL 9000 system analysis {mode}: 100%")
+    if progress_cb:
+        await progress_cb(100, mode)
     return {"status": "completed", "mode": mode, "duration": total}
 
 # Registered functions by name
@@ -143,10 +153,27 @@ async def handle_media_stream(websocket: WebSocket):
                                     args = json.loads(call["arguments"] or "{}")
                                 except json.JSONDecodeError:
                                     args = {}
+                                async def progress_cb(progress: int, mode: str):
+                                    progress_event = {
+                                        "type": "conversation.item.create",
+                                        "item": {
+                                            "type": "message",
+                                            "role": "assistant",
+                                            "content": [
+                                                {
+                                                    "type": "text",
+                                                    "text": f"HAL 9000 system analysis {mode}: {progress}%",
+                                                }
+                                            ],
+                                        },
+                                    }
+                                    await openai_ws.send(json.dumps(progress_event))
+                                    await openai_ws.send(json.dumps({"type": "response.create"}))
+
                                 if asyncio.iscoroutinefunction(func):
-                                    result = await func(**args)
+                                    result = await func(progress_cb=progress_cb, **args)
                                 else:
-                                    result = func(**args)
+                                    result = func(progress_cb=progress_cb, **args)
                             else:
                                 result = {"error": f"Unknown function {call['name']}"}
                             output_event = {
