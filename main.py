@@ -143,6 +143,7 @@ async def handle_media_stream(websocket: WebSocket):
 
         async def send_to_client():
             """Receive events from the OpenAI Realtime API and send audio back to the frontend."""
+            nonlocal response_in_progress, queued_event
             try:
                 async for openai_message in openai_ws:
                     response = json.loads(openai_message)
