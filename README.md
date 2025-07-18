@@ -49,5 +49,9 @@ docker compose up --build
 - Demonstrates Realtime API function calling with `get_current_time`
   and `hal9000_system_analysis` tools (the analysis reports progress
   every 10 seconds via the conversation)
+- Long running function calls are queued if they exceed a
+  configurable threshold and progress updates are relayed. Adjust
+  `FUNCTION_RESPONSE_THRESHOLD` and `MAX_TASK_DURATION` in the `.env`
+  file.
 
 Have fun—and remember, HAL is always listening.
