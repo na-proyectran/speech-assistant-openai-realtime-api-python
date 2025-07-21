@@ -43,8 +43,12 @@ from fastapi.staticfiles import StaticFiles
 app = FastAPI()
 
 # Function calling setup
-def get_current_time() -> dict:
-    """Return the current UTC time in ISO 8601 format with a Z suffix."""
+def get_current_time(progress_cb=None) -> dict:
+    """Return the current UTC time in ISO 8601 format with a Z suffix.
+
+    The ``progress_cb`` argument is accepted for API consistency but ignored
+    because this function returns immediately.
+    """
     now = datetime.now(tz=timezone.utc)
     return {"current_time": now.isoformat().replace("+00:00", "Z")}
 
