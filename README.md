@@ -53,5 +53,7 @@ docker compose up --build
   configurable threshold and progress updates are relayed. Adjust
   `FUNCTION_RESPONSE_THRESHOLD` and `MAX_TASK_DURATION` in the `.env`
   file.
+- The time zone used by `get_current_time` is configurable with the
+  `TIMEZONE` variable (defaults to `Atlantic/Canary`).
 
 Have fun—and remember, HAL is always listening.

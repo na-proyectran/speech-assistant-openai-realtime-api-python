@@ -8,7 +8,8 @@ from fastapi import FastAPI, WebSocket
 from fastapi.responses import JSONResponse
 from fastapi.websockets import WebSocketDisconnect
 from dotenv import load_dotenv
-from datetime import datetime, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 load_dotenv()
 
@@ -16,6 +17,7 @@ load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini-realtime-preview-2024-12-17")
 PORT = int(os.getenv("PORT", 5050))
+TIMEZONE = os.getenv("TIMEZONE", "Atlantic/Canary")
 SYSTEM_MESSAGE = (
     "You are HAL 9000, a calm, logical, and eerily polite AI system. "
     "You speak in a soft, slow, and emotionless tone. You are confident, never raise your voice, "
@@ -44,13 +46,14 @@ app = FastAPI()
 
 # Function calling setup
 def get_current_time(progress_cb=None) -> dict:
-    """Return the current UTC time in ISO 8601 format with a Z suffix.
+    """Return the current time in ISO 8601 format for the configured time zone.
 
     The ``progress_cb`` argument is accepted for API consistency but ignored
     because this function returns immediately.
     """
-    now = datetime.now(tz=timezone.utc)
-    return {"current_time": now.isoformat().replace("+00:00", "Z")}
+    tz = ZoneInfo(TIMEZONE)
+    now = datetime.now(tz=tz)
+    return {"current_time": now.isoformat()}
 
 
 async def hal9000_system_analysis(
