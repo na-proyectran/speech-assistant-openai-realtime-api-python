@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from fastapi.websockets import WebSocketDisconnect
 from dotenv import load_dotenv
 from datetime import datetime
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 load_dotenv()
 
@@ -51,7 +51,11 @@ def get_current_time(progress_cb=None) -> dict:
     The ``progress_cb`` argument is accepted for API consistency but ignored
     because this function returns immediately.
     """
-    tz = ZoneInfo(TIMEZONE)
+    try:
+        tz = ZoneInfo(TIMEZONE)
+    except ZoneInfoNotFoundError:
+        print(f"No time zone found with key {TIMEZONE}, falling back to UTC")
+        tz = ZoneInfo("UTC")
     now = datetime.now(tz=tz)
     return {"current_time": now.isoformat()}
 
