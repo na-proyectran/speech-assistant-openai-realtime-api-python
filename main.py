@@ -8,7 +8,8 @@ from fastapi import FastAPI, WebSocket
 from fastapi.responses import JSONResponse
 from fastapi.websockets import WebSocketDisconnect
 from dotenv import load_dotenv
-from datetime import datetime, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 load_dotenv()
 
@@ -16,6 +17,7 @@ load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini-realtime-preview-2024-12-17")
 PORT = int(os.getenv("PORT", 5050))
+TIMEZONE = os.getenv("TIMEZONE", "Atlantic/Canary")
 SYSTEM_MESSAGE = (
     "You are HAL 9000, a calm, logical, and eerily polite AI system. "
     "You speak in a soft, slow, and emotionless tone. You are confident, never raise your voice, "
@@ -34,15 +36,28 @@ LOG_EVENT_TYPES = [
 ]
 SHOW_TIMING_MATH = False
 
+# Function timing configuration
+FUNCTION_RESPONSE_THRESHOLD = int(os.getenv("FUNCTION_RESPONSE_THRESHOLD", 5))
+MAX_TASK_DURATION = int(os.getenv("MAX_TASK_DURATION", 120))
+
 from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
 
 # Function calling setup
-def get_current_time() -> dict:
-    """Return the current UTC time in ISO 8601 format with a Z suffix."""
-    now = datetime.now(tz=timezone.utc)
-    return {"current_time": now.isoformat().replace("+00:00", "Z")}
+def get_current_time(progress_cb=None) -> dict:
+    """Return the current time in ISO 8601 format for the configured time zone.
+
+    The ``progress_cb`` argument is accepted for API consistency but ignored
+    because this function returns immediately.
+    """
+    try:
+        tz = ZoneInfo(TIMEZONE)
+    except ZoneInfoNotFoundError:
+        print(f"No time zone found with key {TIMEZONE}, falling back to UTC")
+        tz = ZoneInfo("UTC")
+    now = datetime.now(tz=tz)
+    return {"current_time": now.isoformat()}
 
 
 async def hal9000_system_analysis(
@@ -100,6 +115,22 @@ async def handle_media_stream(websocket: WebSocket):
 
         # Connection specific state
         latest_media_timestamp = 0
+        response_in_progress = False
+        queued_event = None
+        send_lock = asyncio.Lock()
+
+        async def send_with_lock(payload: dict):
+            async with send_lock:
+                await openai_ws.send(json.dumps(payload))
+
+        async def enqueue_event(event: dict):
+            nonlocal response_in_progress, queued_event
+            if response_in_progress:
+                queued_event = event
+            else:
+                await send_with_lock(event)
+                await send_with_lock({"type": "response.create"})
+                response_in_progress = True
 
         async def receive_from_client():
             """Receive audio data from the frontend and send it to the OpenAI Realtime API."""
@@ -115,7 +146,7 @@ async def handle_media_stream(websocket: WebSocket):
                             "type": "input_audio_buffer.append",
                             "audio": data["audio"],
                         }
-                        await openai_ws.send(json.dumps(audio_append))
+                        await send_with_lock(audio_append)
             except WebSocketDisconnect:
                 print("Client disconnected.")
                 if openai_ws.state is State.OPEN:
@@ -123,11 +154,22 @@ async def handle_media_stream(websocket: WebSocket):
 
         async def send_to_client():
             """Receive events from the OpenAI Realtime API and send audio back to the frontend."""
+            nonlocal response_in_progress, queued_event
             try:
                 async for openai_message in openai_ws:
                     response = json.loads(openai_message)
                     if response["type"] in LOG_EVENT_TYPES:
                         print(f"Received event: {response['type']}", response)
+
+                    if response.get("type") == "response.created":
+                        response_in_progress = True
+
+                    if response.get("type") == "response.done":
+                        response_in_progress = False
+                        if queued_event:
+                            event = queued_event
+                            queued_event = None
+                            await enqueue_event(event)
 
                     if response.get("type") == "conversation.item.created" and response.get("item", {}).get("type") == "function_call":
                         item = response["item"]
@@ -148,11 +190,24 @@ async def handle_media_stream(websocket: WebSocket):
                         if item.get("type") == "function_call" and item.get("id") in pending_calls:
                             call = pending_calls.pop(item["id"])
                             func = FUNCTIONS.get(call["name"])
+
+                            async def send_output(res):
+                                output_event = {
+                                    "type": "conversation.item.create",
+                                    "item": {
+                                        "type": "function_call_output",
+                                        "call_id": call["call_id"],
+                                        "output": json.dumps(res),
+                                    },
+                                }
+                                await enqueue_event(output_event)
+
                             if func:
                                 try:
                                     args = json.loads(call["arguments"] or "{}")
                                 except json.JSONDecodeError:
                                     args = {}
+
                                 async def progress_cb(progress: int, mode: str):
                                     progress_event = {
                                         "type": "conversation.item.create",
@@ -167,25 +222,43 @@ async def handle_media_stream(websocket: WebSocket):
                                             ],
                                         },
                                     }
-                                    await openai_ws.send(json.dumps(progress_event))
-                                    await openai_ws.send(json.dumps({"type": "response.create"}))
+                                    await enqueue_event(progress_event)
 
-                                if asyncio.iscoroutinefunction(func):
-                                    result = await func(progress_cb=progress_cb, **args)
-                                else:
-                                    result = func(progress_cb=progress_cb, **args)
+                                async def run_func():
+                                    if asyncio.iscoroutinefunction(func):
+                                        return await func(progress_cb=progress_cb, **args)
+                                    return func(progress_cb=progress_cb, **args)
+
+                                task = asyncio.create_task(run_func())
+                                try:
+                                    result = await asyncio.wait_for(task, FUNCTION_RESPONSE_THRESHOLD)
+                                    await send_output(result)
+                                except asyncio.TimeoutError:
+                                    wait_event = {
+                                        "type": "conversation.item.create",
+                                        "item": {
+                                            "type": "message",
+                                            "role": "assistant",
+                                            "content": [
+                                                {
+                                                    "type": "text",
+                                                    "text": "Parece que la tarea está tardando, te iré notificando...",
+                                                }
+                                            ],
+                                        },
+                                    }
+                                    await enqueue_event(wait_event)
+
+                                    async def finalize():
+                                        try:
+                                            res = await asyncio.wait_for(task, MAX_TASK_DURATION - FUNCTION_RESPONSE_THRESHOLD)
+                                        except asyncio.TimeoutError:
+                                            res = {"error": "Task timed out"}
+                                        await send_output(res)
+
+                                    asyncio.create_task(finalize())
                             else:
-                                result = {"error": f"Unknown function {call['name']}"}
-                            output_event = {
-                                "type": "conversation.item.create",
-                                "item": {
-                                    "type": "function_call_output",
-                                    "call_id": call["call_id"],
-                                    "output": json.dumps(result),
-                                },
-                            }
-                            await openai_ws.send(json.dumps(output_event))
-                            await openai_ws.send(json.dumps({"type": "response.create"}))
+                                await send_output({"error": f"Unknown function {call['name']}"})
 
                     if response.get("type") == "input_audio_buffer.speech_started":
                         await websocket.send_json({"event": "clear"})
