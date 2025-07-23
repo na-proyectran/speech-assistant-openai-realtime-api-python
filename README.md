@@ -48,6 +48,12 @@ docker compose up --build
 - Basic interruption handling when you talk over HAL
 - Demonstrates Realtime API function calling with `get_current_time`
   and `hal9000_system_analysis` tools
+- Includes a retrieval-augmented generation tool using Qdrant
+  for hybrid (dense + sparse) document search with paragraph chunking
+  powered by OpenAI embeddings. See the
+  [hybrid search tutorial](https://qdrant.tech/documentation/advanced-tutorials/reranking-hybrid-search/)
+  and [async API guide](https://qdrant.tech/documentation/database-tutorials/async-api/)
+  for details.
 - The time zone used by `get_current_time` is configurable with the
   `TIMEZONE` variable (defaults to `Atlantic/Canary`). If the specified zone is
   unavailable, the server falls back to `UTC`.
@@ -55,5 +61,22 @@ docker compose up --build
   HAL detects turns (defaults to `semantic_vad`)
 - Audio is exchanged as 16-bit little-endian PCM at 24kHz over the WebSocket
   connection, and HAL responds in the same 24kHz PCM format
+
+## RAG Setup
+
+The assistant can search local documents using Qdrant. Set the following
+environment variables or update `.env`:
+
+- `QDRANT_URL` – URL for the Qdrant instance (default `http://localhost:6333`)
+- `RAG_DOCS_DIR` – directory containing text files to index (default `./docs`)
+- `RAG_COLLECTION` – collection name in Qdrant (default `rag_docs`)
+
+Set `OPENAI_EMBEDDING_MODEL` to choose the model used for embeddings
+(default `text-embedding-3-small`).
+
+Place your documents in `RAG_DOCS_DIR` before starting the server. Paragraphs
+are indexed using OpenAI embeddings combined with TF‑IDF sparse vectors. The top
+results are optionally reranked using OpenAI's API to return the ten most
+relevant chunks.
 
 Have fun—and remember, HAL is always listening.
