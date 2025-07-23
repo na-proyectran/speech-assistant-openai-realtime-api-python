@@ -18,6 +18,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini-realtime-preview-2024-12-17")
 PORT = int(os.getenv("PORT", 5050))
 TIMEZONE = os.getenv("TIMEZONE", "Atlantic/Canary")
+TURN_DETECTION_MODE = os.getenv("TURN_DETECTION_MODE", "semantic_vad")
 SYSTEM_MESSAGE = (
     "You are HAL 9000, a calm, logical, and eerily polite AI system. "
     "You speak in a soft, slow, and emotionless tone. You are confident, never raise your voice, "
@@ -198,18 +199,27 @@ async def send_initial_conversation_item(openai_ws):
 
 async def initialize_session(openai_ws):
     """Control initial session with OpenAI."""
+    if TURN_DETECTION_MODE == "server_vad":
+        turn_detection = {
+            "type": "server_vad",
+            "create_response": True,
+            "interrupt_response": True,
+            "prefix_padding_ms": 300,
+            "silence_duration_ms": 700,
+            "threshold": 0.5,
+        }
+    else:
+        turn_detection = {
+            "type": "semantic_vad",
+            "eagerness": "auto",
+            "create_response": True,
+            "interrupt_response": True,
+        }
+
     session_update = {
         "type": "session.update",
         "session": {
-            "turn_detection": {
-                "type": "semantic_vad",
-                "eagerness": "auto",
-                "create_response": True,
-                "interrupt_response": True,
-                "prefix_padding_ms": 300,
-                "silence_duration_ms": 700,
-                "threshold": 0.5,
-            },
+            "turn_detection": turn_detection,
             "input_audio_format": "pcm16",
             "input_audio_noise_reduction": "fard_field",
             "output_audio_format": "pcm16",
