@@ -247,6 +247,20 @@ FUNCTIONS = {
 
 # Track function call data by item_id
 pending_calls: dict[str, dict] = {}
+pruned_tools: set[str] = set()
+
+
+def is_retriable_error(exc: Exception) -> bool:
+    """Return True if the exception is likely retriable."""
+    return isinstance(exc, (asyncio.TimeoutError, ConnectionError))
+
+
+def on_assistant_error(name: str, exc: Exception) -> dict:
+    """Generate an error payload for a failed tool call."""
+    retriable = is_retriable_error(exc)
+    if not retriable:
+        pruned_tools.add(name)
+    return {"error": str(exc), "retriable": retriable}
 
 if not OPENAI_API_KEY:
     raise ValueError("Missing the OpenAI API key. Please set it in the .env file.")
@@ -319,10 +333,13 @@ async def handle_media_stream(websocket: WebSocket):
                                     args = json.loads(call["arguments"] or "{}")
                                 except json.JSONDecodeError:
                                     args = {}
-                                if asyncio.iscoroutinefunction(func):
-                                    result = await func(**args)
-                                else:
-                                    result = func(**args)
+                                try:
+                                    if asyncio.iscoroutinefunction(func):
+                                        result = await func(**args)
+                                    else:
+                                        result = func(**args)
+                                except Exception as e:
+                                    result = on_assistant_error(call["name"], e)
                             else:
                                 result = {"error": f"Unknown function {call['name']}"}
                             output_event = {
