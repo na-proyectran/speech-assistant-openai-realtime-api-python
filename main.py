@@ -212,30 +212,13 @@ async def rag_search(query: str) -> dict:
         collection_name=RAG_COLLECTION,
         query_vector={"name": "dense", "vector": dense_vec},
         query_sparse_vector=sparse_vec,
-        limit=20,
+        limit=10,
         with_payload=True,
         search_params=SearchParams(exact=False),
     )
-    docs = [r.payload["text"] for r in results]
-    if not docs:
-        return {"chunks": []}
-    try:
-        resp = await openai_client.rerank.create(
-            model="bge-rerank-large",
-            query=query,
-            documents=docs,
-            top_n=10,
-        )
-        chunks = [
-            {"text": docs[item.document_index], "score": item.relevance_score}
-            for item in resp.data
-        ]
-    except Exception as e:
-        print(f"Rerank failed: {e}")
-        chunks = [
-            {"text": docs[i], "score": float(results[i].score)}
-            for i in range(min(10, len(results)))
-        ]
+    chunks = [
+        {"text": r.payload["text"], "score": float(r.score)} for r in results
+    ]
     return {"chunks": chunks}
 
 # Registered functions by name

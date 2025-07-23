@@ -73,10 +73,7 @@ environment variables or update `.env`:
 
 Set `OPENAI_EMBEDDING_MODEL` to choose the model used for embeddings
 (default `text-embedding-3-small`).
-
 Place your documents in `RAG_DOCS_DIR` before starting the server. Paragraphs
-are indexed using OpenAI embeddings combined with TF‑IDF sparse vectors. The top
-results are optionally reranked using OpenAI's API to return the ten most
-relevant chunks.
+are indexed using OpenAI embeddings combined with TF-IDF sparse vectors. The search returns the ten most relevant chunks.
 
 Have fun—and remember, HAL is always listening.
