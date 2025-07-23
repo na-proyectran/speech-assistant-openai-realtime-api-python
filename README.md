@@ -51,5 +51,7 @@ docker compose up --build
 - The time zone used by `get_current_time` is configurable with the
   `TIMEZONE` variable (defaults to `Atlantic/Canary`). If the specified zone is
   unavailable, the server falls back to `UTC`.
+- Audio is exchanged as 16-bit little-endian PCM at 24kHz over the WebSocket
+  connection
 
 Have fun—and remember, HAL is always listening.

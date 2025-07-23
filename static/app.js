@@ -34,14 +34,20 @@ function handleMessage(event) {
         return;
     }
     if (data.audio) {
-        const ulaw = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0));
-        const pcm = ulawToPCM(ulaw);
+        const binary = atob(data.audio);
+        const buf = new ArrayBuffer(binary.length);
+        const view = new Uint8Array(buf);
+        for (let i = 0; i < binary.length; i++) {
+            view[i] = binary.charCodeAt(i);
+        }
+        const int16 = new Int16Array(buf);
+        const pcm = int16ToPCM(int16);
         playAudio(pcm);
     }
 }
 
 async function startAudio() {
-    audioContext = new (window.AudioContext || window.webkitAudioContext)({sampleRate: 8000});
+    audioContext = new (window.AudioContext || window.webkitAudioContext)({sampleRate: 24000});
     nextPlaybackTime = audioContext.currentTime;
     mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const source = audioContext.createMediaStreamSource(mediaStream);
@@ -50,10 +56,8 @@ async function startAudio() {
         processor = new AudioWorkletNode(audioContext, 'capture-processor');
         processor.port.onmessage = e => {
             const pcm16 = e.data;
-            const ulaw = pcmToUlaw(pcm16);
-            const b64 = btoa(String.fromCharCode(...ulaw));
             if (ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({audio: b64}));
+                ws.send(pcm16.buffer);
             }
         };
     } else {
@@ -61,10 +65,8 @@ async function startAudio() {
         processor.onaudioprocess = e => {
             const input = e.inputBuffer.getChannelData(0);
             const pcm16 = floatTo16BitPCM(input);
-            const ulaw = pcmToUlaw(pcm16);
-            const b64 = btoa(String.fromCharCode(...ulaw));
             if (ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({audio: b64}));
+                ws.send(pcm16.buffer);
             }
         };
     }
@@ -113,39 +115,17 @@ function floatTo16BitPCM(input) {
     return output;
 }
 
-function pcmToUlaw(samples) {
-    const ulaw = new Uint8Array(samples.length);
-    for (let i = 0; i < samples.length; i++) {
-        let s = samples[i];
-        let sign = (s >> 8) & 0x80;
-        if (sign) s = -s;
-        if (s > 32635) s = 32635;
-        s = s + 132;
-        let exponent = Math.floor(Math.log2(s)) - 7;
-        let mantissa = (s >> (exponent + 3)) & 0x0F;
-        let val = ~(sign | (exponent << 4) | mantissa);
-        ulaw[i] = val & 0xFF;
-    }
-    return ulaw;
-}
 
-function ulawToPCM(ulaw) {
-    const pcm = new Float32Array(ulaw.length);
-    for (let i = 0; i < ulaw.length; i++) {
-        let u = ~ulaw[i];
-        let sign = u & 0x80;
-        let exponent = (u >> 4) & 0x07;
-        let mantissa = u & 0x0F;
-        let sample = ((mantissa << 3) + 132) << exponent;
-        sample -= 132;
-        if (sign) sample = -sample;
-        pcm[i] = sample / 32768;
+function int16ToPCM(int16) {
+    const pcm = new Float32Array(int16.length);
+    for (let i = 0; i < int16.length; i++) {
+        pcm[i] = int16[i] / 32768;
     }
     return pcm;
 }
 
 function playAudio(pcm) {
-    const buffer = audioContext.createBuffer(1, pcm.length, 8000);
+    const buffer = audioContext.createBuffer(1, pcm.length, 24000);
     buffer.copyToChannel(pcm, 0);
     const src = audioContext.createBufferSource();
     src.buffer = buffer;

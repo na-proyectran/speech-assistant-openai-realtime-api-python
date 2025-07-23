@@ -96,22 +96,14 @@ async def handle_media_stream(websocket: WebSocket):
     ) as openai_ws:
         await initialize_session(openai_ws)
 
-        # Connection specific state
-        latest_media_timestamp = 0
-
         async def receive_from_client():
-            """Receive audio data from the frontend and send it to the OpenAI Realtime API."""
-            nonlocal latest_media_timestamp
+            """Receive raw PCM data from the frontend and forward to OpenAI."""
             try:
-                async for message in websocket.iter_text():
-                    data = json.loads(message)
-                    if "audio" in data and openai_ws.state is State.OPEN:
-                        latest_media_timestamp = int(
-                            data.get("timestamp", latest_media_timestamp)
-                        )
+                async for pcm in websocket.iter_bytes():
+                    if openai_ws.state is State.OPEN:
                         audio_append = {
                             "type": "input_audio_buffer.append",
-                            "audio": data["audio"],
+                            "audio": base64.b64encode(pcm).decode(),
                         }
                         await openai_ws.send(json.dumps(audio_append))
             except WebSocketDisconnect:
@@ -214,8 +206,8 @@ async def initialize_session(openai_ws):
                 "create_response": True,
                 "interrupt_response": True,
             },
-            "input_audio_format": "g711_ulaw",
-            "output_audio_format": "g711_ulaw",
+            "input_audio_format": "pcm_s16le",
+            "output_audio_format": "pcm16",
             "voice": VOICE,
             "instructions": SYSTEM_MESSAGE,
             "modalities": ["text", "audio"],
