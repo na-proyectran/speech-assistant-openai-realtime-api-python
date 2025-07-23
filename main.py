@@ -239,7 +239,9 @@ async def initialize_session(openai_ws):
         "session": {
             "turn_detection": turn_detection,
             "input_audio_format": "pcm16",
-            "input_audio_noise_reduction": "fard_field",
+            "input_audio_noise_reduction": {
+                "type": "far_field"
+            },
             "output_audio_format": "pcm16",
             "voice": "alloy",
             "instructions": SYSTEM_MESSAGE,
