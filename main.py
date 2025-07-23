@@ -193,7 +193,18 @@ async def handle_media_stream(websocket: WebSocket):
             except Exception as e:
                 print(f"Error in send_to_client: {e}")
 
-        await asyncio.gather(receive_from_client(), send_to_client())
+        receive_task = asyncio.create_task(receive_from_client())
+        send_task = asyncio.create_task(send_to_client())
+        try:
+            await asyncio.gather(receive_task, send_task)
+        except Exception as e:
+            print(f"Error during streaming: {e}")
+        finally:
+            receive_task.cancel()
+            send_task.cancel()
+            if openai_ws.state is State.OPEN:
+                await openai_ws.close()
+            await websocket.close()
 
 
 async def send_initial_conversation_item(openai_ws):
