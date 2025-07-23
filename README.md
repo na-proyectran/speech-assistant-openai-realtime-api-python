@@ -51,5 +51,9 @@ docker compose up --build
 - The time zone used by `get_current_time` is configurable with the
   `TIMEZONE` variable (defaults to `Atlantic/Canary`). If the specified zone is
   unavailable, the server falls back to `UTC`.
+- Set `TURN_DETECTION_MODE` to `semantic_vad` or `server_vad` to control how
+  HAL detects turns (defaults to `semantic_vad`)
+- Audio is exchanged as 16-bit little-endian PCM at 24kHz over the WebSocket
+  connection, and HAL responds in the same 24kHz PCM format
 
 Have fun—and remember, HAL is always listening.

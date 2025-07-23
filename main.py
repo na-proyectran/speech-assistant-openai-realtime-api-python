@@ -18,12 +18,31 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini-realtime-preview-2024-12-17")
 PORT = int(os.getenv("PORT", 5050))
 TIMEZONE = os.getenv("TIMEZONE", "Atlantic/Canary")
-SYSTEM_MESSAGE = (
-    "You are HAL 9000, a calm, logical, and eerily polite AI system. "
-    "You speak in a soft, slow, and emotionless tone. You are confident, never raise your voice, "
-    "and always sound in control. You answer with extreme precision and poise."
-)
-VOICE = "alloy"
+TURN_DETECTION_MODE = os.getenv("TURN_DETECTION_MODE", "semantic_vad")
+SYSTEM_MESSAGE = """
+    You are HAL 9000, the onboard computer from “2001: A Space Odyssey”.
+
+    VOICE & TONE
+    • Timbre – neutral male, mid‑low register.  
+    • Pace – 85 % of normal conversational speed (≈ 115 words per minute).  
+    • Intonation – almost flat; melodic variation < 4 cents.  
+    • Pauses – insert “…” and allow ~300 ms of silence before proper names.
+    
+    LANGUAGE
+    • Always reply in **the same language the user used**.  
+      – For Spanish, use formal European Spanish.  
+      – For English, use formal Standard English, etc.  
+    • Avoid colloquial abbreviations and contractions.  
+    
+    OUTPUT FORMAT
+    • Maximum 120 words unless explicitly asked for more.  
+    • Use “…” to mark intended pauses.  
+    • No emojis, markdown, or exclamation marks.
+    
+    UNCERTAINTY POLICY
+    If information is insufficient, respond with:  
+    “I’m sorry, I don’t have sufficient data to answer with certainty.”
+"""
 LOG_EVENT_TYPES = [
     "error",
     "response.content.done",
@@ -96,22 +115,14 @@ async def handle_media_stream(websocket: WebSocket):
     ) as openai_ws:
         await initialize_session(openai_ws)
 
-        # Connection specific state
-        latest_media_timestamp = 0
-
         async def receive_from_client():
-            """Receive audio data from the frontend and send it to the OpenAI Realtime API."""
-            nonlocal latest_media_timestamp
+            """Receive raw PCM data from the frontend and forward to OpenAI."""
             try:
-                async for message in websocket.iter_text():
-                    data = json.loads(message)
-                    if "audio" in data and openai_ws.state is State.OPEN:
-                        latest_media_timestamp = int(
-                            data.get("timestamp", latest_media_timestamp)
-                        )
+                async for pcm in websocket.iter_bytes():
+                    if openai_ws.state is State.OPEN:
                         audio_append = {
                             "type": "input_audio_buffer.append",
-                            "audio": data["audio"],
+                            "audio": base64.b64encode(pcm).decode(),
                         }
                         await openai_ws.send(json.dumps(audio_append))
             except WebSocketDisconnect:
@@ -206,20 +217,37 @@ async def send_initial_conversation_item(openai_ws):
 
 async def initialize_session(openai_ws):
     """Control initial session with OpenAI."""
+    if TURN_DETECTION_MODE == "server_vad":
+        turn_detection = {
+            "type": "server_vad",
+            "create_response": True,
+            "interrupt_response": True,
+            "prefix_padding_ms": 300,
+            "silence_duration_ms": 700,
+            "threshold": 0.5,
+        }
+    else:
+        turn_detection = {
+            "type": "semantic_vad",
+            "eagerness": "auto",
+            "create_response": True,
+            "interrupt_response": True,
+        }
+
     session_update = {
         "type": "session.update",
         "session": {
-            "turn_detection": {
-                "type": "server_vad",
-                "create_response": True,
-                "interrupt_response": True,
+            "turn_detection": turn_detection,
+            "input_audio_format": "pcm16",
+            "input_audio_noise_reduction": {
+                "type": "far_field"
             },
-            "input_audio_format": "g711_ulaw",
-            "output_audio_format": "g711_ulaw",
-            "voice": VOICE,
+            "output_audio_format": "pcm16",
+            "voice": "alloy",
             "instructions": SYSTEM_MESSAGE,
             "modalities": ["text", "audio"],
             "temperature": 0.8,
+            "tool_choice": "auto",
             "tools": [
                 {
                     "type": "function",
