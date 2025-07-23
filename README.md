@@ -52,6 +52,6 @@ docker compose up --build
   `TIMEZONE` variable (defaults to `Atlantic/Canary`). If the specified zone is
   unavailable, the server falls back to `UTC`.
 - Audio is exchanged as 16-bit little-endian PCM at 24kHz over the WebSocket
-  connection
+  connection, and HAL responds in the same 24kHz PCM format
 
 Have fun—and remember, HAL is always listening.

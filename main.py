@@ -202,11 +202,16 @@ async def initialize_session(openai_ws):
         "type": "session.update",
         "session": {
             "turn_detection": {
-                "type": "server_vad",
+                "type": "semantic_vad",
+                "eagerness": "auto",
                 "create_response": True,
                 "interrupt_response": True,
+                "prefix_padding_ms": 300,
+                "silence_duration_ms": 700,
+                "threshold": 0.5,
             },
-            "input_audio_format": "pcm_s16le",
+            "input_audio_format": "pcm16",
+            "input_audio_noise_reduction": "fard_field",
             "output_audio_format": "pcm16",
             "voice": VOICE,
             "instructions": SYSTEM_MESSAGE,
