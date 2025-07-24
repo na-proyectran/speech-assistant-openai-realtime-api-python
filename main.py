@@ -16,7 +16,7 @@ from qdrant_client.http.models import (
     Distance,
     SearchParams,
     NamedVector,
-    SearchRequest,
+    NearestQuery,
 )
 from openai import AsyncOpenAI
 import math
@@ -208,15 +208,14 @@ async def rag_search(query: str) -> dict:
     """Return the most relevant paragraphs for the given query."""
     await _ensure_collection()
     dense_vec = (await _embed([query]))[0]
-    search_req = SearchRequest(
-        vector=NamedVector(name="dense", vector=dense_vec),
-        params=SearchParams(exact=False),
-        limit=10,
-        with_payload=True,
-    )
+    query_obj = NearestQuery(nearest=NamedVector(name="dense", vector=dense_vec))
     response = await qdrant_client.query_points(
         collection_name=RAG_COLLECTION,
-        query=search_req,
+        query=query_obj,
+        using="dense",
+        search_params=SearchParams(exact=False),
+        limit=10,
+        with_payload=True,
     )
     chunks = [
         {"text": p.payload["text"], "score": float(p.score)} for p in response.points
