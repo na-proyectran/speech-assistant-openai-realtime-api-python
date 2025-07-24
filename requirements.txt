@@ -3,3 +3,5 @@ uvicorn==0.35.0
 websockets==15.0.1
 python-dotenv==1.1.1
 tzdata
+qdrant-client==1.15.0
+openai==1.97.1

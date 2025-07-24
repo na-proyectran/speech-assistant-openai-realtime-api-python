@@ -7,7 +7,9 @@ from websockets.protocol import State
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import JSONResponse
 from fastapi.websockets import WebSocketDisconnect
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
+from rag_tool import init_rag, query_rag
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -47,18 +49,30 @@ LOG_EVENT_TYPES = [
     "error",
     "response.content.done",
     "rate_limits.updated",
+    "conversation.item.created",
     "response.done",
     "input_audio_buffer.committed",
     "input_audio_buffer.speech_stopped",
     "input_audio_buffer.speech_started",
     "session.created",
-    "conversation.item.created",
+    "session.update",
 ]
 SHOW_TIMING_MATH = False
 
 from fastapi.staticfiles import StaticFiles
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup logic
+    await init_rag()
+    yield
+    # Shutdown logic (if needed)
+    # e.g. await qdrant_client.close() or db_client.disconnect()
+    # currently empty
+
+app = FastAPI(lifespan=lifespan)
+
 
 # Function calling setup
 def get_current_time() -> dict:
@@ -86,6 +100,7 @@ async def hal9000_system_analysis(mode: str = "simple") -> dict:
 FUNCTIONS = {
     "get_current_time": get_current_time,
     "hal9000_system_analysis": hal9000_system_analysis,
+    "query_rag": query_rag,
 }
 
 # Track function call data by item_id
@@ -106,6 +121,7 @@ async def handle_media_stream(websocket: WebSocket):
     print("Client connected")
     await websocket.accept()
 
+    # see https://platform.openai.com/docs/guides/realtime-conversations#handling-audio-with-websockets
     async with websockets.connect(
         f"wss://api.openai.com/v1/realtime?model={OPENAI_MODEL}",
         additional_headers={
@@ -263,13 +279,13 @@ async def initialize_session(openai_ws):
                 {
                     "type": "function",
                     "name": "get_current_time",
-                    "description": "Return the current time",
+                    "description": "Return the current time.",
                     "parameters": {"type": "object", "properties": {}},
                 },
                 {
                     "type": "function",
                     "name": "hal9000_system_analysis",
-                    "description": "Simulate a HAL 9000 system analysis",
+                    "description": "Simulate a HAL 9000 system analysis.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -279,6 +295,18 @@ async def initialize_session(openai_ws):
                                 "default": "simple",
                             }
                         },
+                    },
+                },
+                {
+                    "type": "function",
+                    "name": "query_rag",
+                    "description": "Retrieve the most relevant historical and cultural information about 'La Casa de los Balcones' located in La Orotava, Tenerife.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string"}
+                        },
+                        "required": ["query"]
                     },
                 },
             ],
