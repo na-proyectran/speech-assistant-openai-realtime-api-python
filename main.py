@@ -8,6 +8,7 @@ from fastapi import FastAPI, WebSocket
 from fastapi.responses import JSONResponse
 from fastapi.websockets import WebSocketDisconnect
 from dotenv import load_dotenv
+from rag_tool import init_rag, query_rag
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -59,6 +60,9 @@ SHOW_TIMING_MATH = False
 from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
+@app.on_event("startup")
+async def _rag_startup():
+    await init_rag()
 
 # Function calling setup
 def get_current_time() -> dict:
@@ -86,6 +90,7 @@ async def hal9000_system_analysis(mode: str = "simple") -> dict:
 FUNCTIONS = {
     "get_current_time": get_current_time,
     "hal9000_system_analysis": hal9000_system_analysis,
+    "query_rag": query_rag,
 }
 
 # Track function call data by item_id
@@ -279,6 +284,18 @@ async def initialize_session(openai_ws):
                                 "default": "simple",
                             }
                         },
+                    },
+                },
+                {
+                    "type": "function",
+                    "name": "query_rag",
+                    "description": "Search the RAG documents",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string"}
+                        },
+                        "required": ["query"]
                     },
                 },
             ],

@@ -1,0 +1,15 @@
+Using FastEmbed with Qdrant for Vector Search
+Install Qdrant Client and FastEmbed
+pip install "qdrant-client[fastembed]>=1.14.2"
+
+Initialize the client
+Qdrant Client has a simple in-memory mode that lets you try semantic search locally.
+
+from qdrant_client import QdrantClient, models
+
+client = QdrantClient(":memory:")  # Qdrant is running from RAM.
+
+Add data
+Now you can add two sample documents, their associated metadata, and a point id for each.
+
+# .. truncated for brevity ..
