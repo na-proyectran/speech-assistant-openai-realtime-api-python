@@ -4,6 +4,8 @@ import base64
 import asyncio
 import websockets
 from websockets.protocol import State
+from qdrant_client import AsyncQdrantClient
+from qdrant_client.http.models import Distance, VectorParams, SparseVectorParams
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import JSONResponse
 from fastapi.websockets import WebSocketDisconnect
@@ -19,6 +21,8 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini-realtime-preview-2024-12-1
 PORT = int(os.getenv("PORT", 5050))
 TIMEZONE = os.getenv("TIMEZONE", "Atlantic/Canary")
 TURN_DETECTION_MODE = os.getenv("TURN_DETECTION_MODE", "semantic_vad")
+RAG_COLLECTION = os.getenv("RAG_COLLECTION", "assistant_rag")
+QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 SYSTEM_MESSAGE = """
     You are HAL 9000, the onboard computer from “2001: A Space Odyssey”.
 
@@ -59,6 +63,19 @@ SHOW_TIMING_MATH = False
 from fastapi.staticfiles import StaticFiles
 
 app = FastAPI()
+qdrant_client = AsyncQdrantClient(url=QDRANT_URL)
+
+
+async def _ensure_collection(dim: int) -> None:
+    """Create the RAG collection in Qdrant if it does not exist."""
+    try:
+        await qdrant_client.get_collection(RAG_COLLECTION)
+    except Exception:
+        await qdrant_client.create_collection(
+            collection_name=RAG_COLLECTION,
+            vectors_config={"dense": VectorParams(size=dim, distance=Distance.COSINE)},
+            sparse_vectors_config={"sparse": SparseVectorParams()},
+        )
 
 # Function calling setup
 def get_current_time() -> dict:
