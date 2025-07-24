@@ -1,7 +1,16 @@
 services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
   app:
     build: .
     env_file: .env
+    depends_on:
+      - qdrant
     ports:
       - "${PORT:-5050}:5050"
     environment:
@@ -9,3 +18,11 @@ services:
       - OPENAI_MODEL=${OPENAI_MODEL}
       - PORT=${PORT}
       - TURN_DETECTION_MODE=${TURN_DETECTION_MODE}
+      - QDRANT_URL=${QDRANT_URL:-http://qdrant:6333}
+      - RAG_DOCS_DIR=${RAG_DOCS_DIR:-/app/docs}
+      - RAG_COLLECTION=${RAG_COLLECTION:-rag_docs}
+    volumes:
+      - ${RAG_DOCS_DIR:-./docs}:/app/docs
+
+volumes:
+  qdrant_data:

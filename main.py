@@ -8,6 +8,18 @@ from fastapi import FastAPI, WebSocket
 from fastapi.responses import JSONResponse
 from fastapi.websockets import WebSocketDisconnect
 from dotenv import load_dotenv
+from qdrant_client import AsyncQdrantClient
+from qdrant_client.http.models import (
+    PointStruct,
+    SparseVector,
+    VectorParams,
+    Distance,
+    SearchParams,
+)
+from openai import AsyncOpenAI
+import math
+from collections import Counter
+import glob
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -19,6 +31,10 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini-realtime-preview-2024-12-1
 PORT = int(os.getenv("PORT", 5050))
 TIMEZONE = os.getenv("TIMEZONE", "Atlantic/Canary")
 TURN_DETECTION_MODE = os.getenv("TURN_DETECTION_MODE", "semantic_vad")
+QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
+RAG_DOCS_DIR = os.getenv("RAG_DOCS_DIR", "./docs")
+RAG_COLLECTION = os.getenv("RAG_COLLECTION", "rag_docs")
+EMBED_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
 SYSTEM_MESSAGE = """
     You are HAL 9000, the onboard computer from “2001: A Space Odyssey”.
 
@@ -82,14 +98,152 @@ async def hal9000_system_analysis(mode: str = "simple") -> dict:
         print(f"HAL 9000 system analysis {mode}: {progress}%")
     return {"status": "completed", "mode": mode, "duration": total}
 
+
+## RAG setup
+qdrant_client = AsyncQdrantClient(url=QDRANT_URL)
+openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+
+
+class SimpleTfidfVectorizer:
+    def __init__(self):
+        self.vocab: dict[str, int] = {}
+        self.idf: dict[str, float] = {}
+
+    @staticmethod
+    def _tokenize(text: str) -> list[str]:
+        return [t for t in text.lower().split() if t]
+
+    def fit_transform(self, docs: list[str]) -> list[tuple[list[int], list[float]]]:
+        tokenized = [self._tokenize(d) for d in docs]
+        df: Counter[str] = Counter()
+        for tokens in tokenized:
+            for t in set(tokens):
+                df[t] += 1
+        self.vocab = {t: i for i, t in enumerate(df.keys())}
+        n = len(docs)
+        self.idf = {t: math.log((n + 1) / (df[t] + 1)) + 1 for t in df}
+        vectors = []
+        for tokens in tokenized:
+            counts = Counter(tokens)
+            idx: list[int] = []
+            val: list[float] = []
+            for term, c in counts.items():
+                if term in self.vocab:
+                    idx.append(self.vocab[term])
+                    val.append(c * self.idf[term])
+            vectors.append((idx, val))
+        return vectors
+
+    def transform(self, docs: list[str]) -> list[tuple[list[int], list[float]]]:
+        vectors = []
+        for text in docs:
+            counts = Counter(self._tokenize(text))
+            idx: list[int] = []
+            val: list[float] = []
+            for term, c in counts.items():
+                if term in self.vocab:
+                    idx.append(self.vocab[term])
+                    val.append(c * self.idf.get(term, 0))
+            vectors.append((idx, val))
+        return vectors
+
+
+vectorizer = SimpleTfidfVectorizer()
+
+
+def _load_paragraphs() -> list[str]:
+    paragraphs = []
+    for path in glob.glob(os.path.join(RAG_DOCS_DIR, "*")):
+        if os.path.isfile(path):
+            with open(path, "r", encoding="utf-8") as f:
+                text = f.read()
+                for p in text.split("\n\n"):
+                    p = p.strip()
+                    if p:
+                        paragraphs.append(p)
+    return paragraphs
+
+
+async def _embed(texts: list[str]) -> list[list[float]]:
+    resp = await openai_client.embeddings.create(model=EMBED_MODEL, input=texts)
+    return [d.embedding for d in resp.data]
+
+
+async def _ensure_collection() -> None:
+    if not await qdrant_client.collection_exists(collection_name=RAG_COLLECTION):
+        paragraphs = _load_paragraphs()
+        if not paragraphs:
+            return
+        dense = await _embed(paragraphs)
+        sparse = vectorizer.fit_transform(paragraphs)
+        dim = len(dense[0])
+        await qdrant_client.create_collection(
+            collection_name=RAG_COLLECTION,
+            vectors_config={
+                "dense": VectorParams(size=dim, distance=Distance.COSINE),
+                "sparse": VectorParams(size=0, distance=Distance.DOT),
+            },
+        )
+        points = []
+        for idx, text in enumerate(paragraphs):
+            idxs, vals = sparse[idx]
+            points.append(
+                PointStruct(
+                    id=idx,
+                    vector={
+                        "dense": dense[idx],
+                        "sparse": SparseVector(indices=idxs, values=vals),
+                    },
+                    payload={"text": text},
+                )
+            )
+        await qdrant_client.upsert(collection_name=RAG_COLLECTION, points=points)
+
+
+
+
+async def rag_search(query: str) -> dict:
+    """Return the most relevant paragraphs for the given query."""
+    await _ensure_collection()
+    dense_vec = (await _embed([query]))[0]
+    sparse_vec_q = vectorizer.transform([query])[0]
+    sparse_vec = SparseVector(indices=sparse_vec_q[0], values=sparse_vec_q[1])
+    results = await qdrant_client.search(
+        collection_name=RAG_COLLECTION,
+        query_vector={"name": "dense", "vector": dense_vec},
+        query_sparse_vector=sparse_vec,
+        limit=10,
+        with_payload=True,
+        search_params=SearchParams(exact=False),
+    )
+    chunks = [
+        {"text": r.payload["text"], "score": float(r.score)} for r in results
+    ]
+    return {"chunks": chunks}
+
 # Registered functions by name
 FUNCTIONS = {
     "get_current_time": get_current_time,
     "hal9000_system_analysis": hal9000_system_analysis,
+    "rag_search": rag_search,
 }
 
 # Track function call data by item_id
 pending_calls: dict[str, dict] = {}
+pruned_tools: set[str] = set()
+
+
+def is_retriable_error(exc: Exception) -> bool:
+    """Return True if the exception is likely retriable."""
+    return isinstance(exc, (asyncio.TimeoutError, ConnectionError))
+
+
+def on_assistant_error(name: str, exc: Exception) -> dict:
+    """Generate an error payload for a failed tool call."""
+    retriable = is_retriable_error(exc)
+    if not retriable:
+        pruned_tools.add(name)
+    return {"error": str(exc), "retriable": retriable}
 
 if not OPENAI_API_KEY:
     raise ValueError("Missing the OpenAI API key. Please set it in the .env file.")
@@ -162,10 +316,13 @@ async def handle_media_stream(websocket: WebSocket):
                                     args = json.loads(call["arguments"] or "{}")
                                 except json.JSONDecodeError:
                                     args = {}
-                                if asyncio.iscoroutinefunction(func):
-                                    result = await func(**args)
-                                else:
-                                    result = func(**args)
+                                try:
+                                    if asyncio.iscoroutinefunction(func):
+                                        result = await func(**args)
+                                    else:
+                                        result = func(**args)
+                                except Exception as e:
+                                    result = on_assistant_error(call["name"], e)
                             else:
                                 result = {"error": f"Unknown function {call['name']}"}
                             output_event = {
@@ -279,6 +436,18 @@ async def initialize_session(openai_ws):
                                 "default": "simple",
                             }
                         },
+                    },
+                },
+                {
+                    "type": "function",
+                    "name": "rag_search",
+                    "description": "Search indexed documents for relevant information",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string"}
+                        },
+                        "required": ["query"],
                     },
                 },
             ],
