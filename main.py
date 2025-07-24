@@ -49,12 +49,13 @@ LOG_EVENT_TYPES = [
     "error",
     "response.content.done",
     "rate_limits.updated",
+    "conversation.item.created",
     "response.done",
     "input_audio_buffer.committed",
     "input_audio_buffer.speech_stopped",
     "input_audio_buffer.speech_started",
     "session.created",
-    "conversation.item.created",
+    "session.update",
 ]
 SHOW_TIMING_MATH = False
 
@@ -120,6 +121,7 @@ async def handle_media_stream(websocket: WebSocket):
     print("Client connected")
     await websocket.accept()
 
+    # see https://platform.openai.com/docs/guides/realtime-conversations#handling-audio-with-websockets
     async with websockets.connect(
         f"wss://api.openai.com/v1/realtime?model={OPENAI_MODEL}",
         additional_headers={
@@ -277,13 +279,13 @@ async def initialize_session(openai_ws):
                 {
                     "type": "function",
                     "name": "get_current_time",
-                    "description": "Return the current time",
+                    "description": "Return the current time.",
                     "parameters": {"type": "object", "properties": {}},
                 },
                 {
                     "type": "function",
                     "name": "hal9000_system_analysis",
-                    "description": "Simulate a HAL 9000 system analysis",
+                    "description": "Simulate a HAL 9000 system analysis.",
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -298,7 +300,7 @@ async def initialize_session(openai_ws):
                 {
                     "type": "function",
                     "name": "query_rag",
-                    "description": "Retrieve the most relevant historical and cultural information about 'La Casa de los Balcones' located in La Orotava, Tenerife. Focus on architectural features, history, notable figures associated with the house, and any relevant cultural significance.",
+                    "description": "Retrieve the most relevant historical and cultural information about 'La Casa de los Balcones' located in La Orotava, Tenerife.",
                     "parameters": {
                         "type": "object",
                         "properties": {
