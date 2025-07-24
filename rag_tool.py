@@ -55,7 +55,7 @@ async def init_rag() -> None:
     client.upsert(collection_name=collection_name, points=points)
 
 
-async def query_rag(query: str, top_k: int = 3, min_score: float = 0.0) -> dict:
+async def query_rag(query: str, top_k: int = 5, min_score: int = 6.0) -> dict:
     query_vector = (await _embed([query]))[0]
     hits = client.search(
         collection_name=collection_name,
@@ -64,7 +64,9 @@ async def query_rag(query: str, top_k: int = 3, min_score: float = 0.0) -> dict:
         with_payload=True,
     )
     docs = [hit.payload.get("document", "") for hit in hits]
+    print("DOCS:", docs)
     reranked = await reranker.rerank(query, docs, min_score=min_score)
+    print("RERANK: ", reranked)
     return {
         "results": [
             {"document": doc, "score": score} for doc, score in reranked
