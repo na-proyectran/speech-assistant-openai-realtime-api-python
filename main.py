@@ -15,6 +15,8 @@ from qdrant_client.http.models import (
     VectorParams,
     Distance,
     SearchParams,
+    NamedVector,
+    SearchRequest,
 )
 from openai import AsyncOpenAI
 import math
@@ -206,18 +208,18 @@ async def rag_search(query: str) -> dict:
     """Return the most relevant paragraphs for the given query."""
     await _ensure_collection()
     dense_vec = (await _embed([query]))[0]
-    sparse_vec_q = vectorizer.transform([query])[0]
-    sparse_vec = SparseVector(indices=sparse_vec_q[0], values=sparse_vec_q[1])
-    results = await qdrant_client.search(
-        collection_name=RAG_COLLECTION,
-        query_vector={"name": "dense", "vector": dense_vec},
-        query_sparse_vector=sparse_vec,
+    search_req = SearchRequest(
+        vector=NamedVector(name="dense", vector=dense_vec),
+        params=SearchParams(exact=False),
         limit=10,
         with_payload=True,
-        search_params=SearchParams(exact=False),
+    )
+    response = await qdrant_client.query_points(
+        collection_name=RAG_COLLECTION,
+        query=search_req,
     )
     chunks = [
-        {"text": r.payload["text"], "score": float(r.score)} for r in results
+        {"text": p.payload["text"], "score": float(p.score)} for p in response.points
     ]
     return {"chunks": chunks}
 
