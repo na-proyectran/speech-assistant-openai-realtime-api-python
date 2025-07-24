@@ -1,15 +1,49 @@
-Using FastEmbed with Qdrant for Vector Search
-Install Qdrant Client and FastEmbed
-pip install "qdrant-client[fastembed]>=1.14.2"
+¿Qué tipo de maderas se usaron para construir los balcones y elementos interiores?
+Se utilizó principalmente madera de tea (corazón de pino canario) por su resistencia y durabilidad, junto con otras maderas nobles locales para detalles decorativos y mobiliario.
 
-Initialize the client
-Qdrant Client has a simple in-memory mode that lets you try semantic search locally.
+¿Cuántos balcones originales se conservan desde su construcción?
+Se conservan los balcones principales de la fachada y varios interiores, restaurados siguiendo técnicas tradicionales para mantener su aspecto y estructura originales.
 
-from qdrant_client import QdrantClient, models
+¿Qué familias vivieron aquí y qué aportaron a la historia local?
+Fue residencia de la familia Machado y Méndez, una de las más influyentes de La Orotava, vinculada al comercio, la agricultura y la promoción de las artes y la cultura local.
 
-client = QdrantClient(":memory:")  # Qdrant is running from RAM.
+¿Se pueden ver habitaciones originales tal como se usaban?
+Sí, varias estancias conservan mobiliario, utensilios y decoración de época, recreando la forma de vida de la burguesía canaria entre los siglos XVII y XIX.
 
-Add data
-Now you can add two sample documents, their associated metadata, and a point id for each.
+¿Qué simbolizan los detalles tallados en los balcones y columnas?
+Los motivos tallados reflejan elementos de la naturaleza, símbolos religiosos y heráldica familiar, mostrando la relevancia social de los propietarios y el talento de los artesanos locales.
 
-# .. truncated for brevity ..
+¿Hay piezas de artesanía originales de la época?
+Sí, se exponen muebles, cofres, herramientas de trabajo y utensilios domésticos auténticos, muchos de ellos fabricados en talleres canarios de la época.
+
+¿Qué textiles o bordados tradicionales se exponen?
+La Casa muestra una valiosa colección de bordados, encajes y trajes típicos, incluyendo mantillas, calados y ropas tradicionales usados en festividades y vida cotidiana.
+
+¿Puedo ver demostraciones en vivo de artesanía canaria?
+Sí, en ocasiones se organizan demostraciones de calado canario, bordado y otras técnicas tradicionales, realizadas por artesanas locales que mantienen viva la tradición.
+
+¿Cuál es la pieza más valiosa o curiosa de la colección?
+Una de las más valoradas es el balcón principal de tea labrado a mano y, entre las piezas interiores, destaca un arcón tallado del siglo XVIII y piezas textiles de gran finura.
+
+¿Qué secretos arquitectónicos tiene la casa? (pasadizos, sótanos, aljibes)
+La casa conserva un antiguo aljibe para recoger agua de lluvia y un patio central que articula la vivienda.
+
+¿Por qué se considera un icono de la arquitectura tradicional canaria?
+Por su fachada con balcones de madera, patios interiores, empleo de piedra y tea, y la fusión de estilos mudéjar e influencias coloniales que representan la identidad canaria.
+
+¿Hay patio interior visitable y qué plantas se cultivan en él?
+Sí, el patio interior es uno de los espacios más admirados, con vegetación autóctona como helechos, geranios y flores tradicionales, creando un ambiente fresco y luminoso.
+
+¿Qué eventos históricos ocurrieron dentro de la casa?
+La casa fue testigo de reuniones sociales y políticas relevantes, celebraciones familiares y actividades relacionadas con la economía agrícola y la defensa de la cultura local.
+
+¿Se puede acceder a la parte superior de los balcones?
+Sí, algunos balcones se pueden recorrer desde el interior de la casa para observar la estructura y disfrutar de vistas al patio y a la calle principal de La Orotava.
+
+¿Hay alguna historia o leyenda vinculada a la Casa de los Balcones?
+Se dice que en algunas noches se escuchan susurros de antiguos habitantes, y que los balcones servían para observar procesiones y festejos sin ser vistos, reforzando el misticismo de la casa.
+
+¿Cuánto se tarda en hacer un mantel?
+Trabajando unas cinco chicas se tardará alrededor de un mes.
+El proceso del calado es el siguiente: marcar, sacar un hilo doble espigueta para dar fijeza al trabajo y hacer las patas y los cuadros. Lo más difícil es el marcado, que consiste en cortar los hilos. Eso sí, no uno más ni uno menos.
+Una hebra que salga de su sitio puede destrozar el trabajo. Todas mis alumnas saben calar, pero no todas saben marcar.

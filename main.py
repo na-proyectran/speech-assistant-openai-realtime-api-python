@@ -7,6 +7,7 @@ from websockets.protocol import State
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import JSONResponse
 from fastapi.websockets import WebSocketDisconnect
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from rag_tool import init_rag, query_rag
 from datetime import datetime
@@ -59,10 +60,18 @@ SHOW_TIMING_MATH = False
 
 from fastapi.staticfiles import StaticFiles
 
-app = FastAPI()
-@app.on_event("startup")
-async def _rag_startup():
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup logic
     await init_rag()
+    yield
+    # Shutdown logic (if needed)
+    # e.g. await qdrant_client.close() or db_client.disconnect()
+    # currently empty
+
+app = FastAPI(lifespan=lifespan)
+
 
 # Function calling setup
 def get_current_time() -> dict:
@@ -289,7 +298,7 @@ async def initialize_session(openai_ws):
                 {
                     "type": "function",
                     "name": "query_rag",
-                    "description": "Search the RAG documents",
+                    "description": "Retrieve the most relevant historical and cultural information about 'La Casa de los Balcones' located in La Orotava, Tenerife. Focus on architectural features, history, notable figures associated with the house, and any relevant cultural significance.",
                     "parameters": {
                         "type": "object",
                         "properties": {

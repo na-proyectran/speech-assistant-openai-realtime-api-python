@@ -1,9 +1,12 @@
 import os
 import glob
 from typing import List
+from dotenv import load_dotenv
 
 from openai import AsyncOpenAI
 from qdrant_client import QdrantClient, models
+
+load_dotenv()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 EMBED_MODEL = os.getenv("EMBED_MODEL", "text-embedding-3-small")
@@ -37,7 +40,7 @@ async def init_rag() -> None:
         return
     embeddings = await _embed(paragraphs)
     vector_size = len(embeddings[0])
-    client.recreate_collection(
+    client.create_collection(
         collection_name=collection_name,
         vectors_config=models.VectorParams(size=vector_size, distance=models.Distance.COSINE),
     )
