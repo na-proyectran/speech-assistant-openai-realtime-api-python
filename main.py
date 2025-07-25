@@ -47,10 +47,12 @@ SYSTEM_MESSAGE = """
 """
 LOG_EVENT_TYPES = [
     "error",
-    "response.content.done",
+    "response.create",
+    "response.done",
+    "response.function_call_arguments.done",
+    "response.output_item.done",
     "rate_limits.updated",
     "conversation.item.created",
-    "response.done",
     "input_audio_buffer.committed",
     "input_audio_buffer.speech_stopped",
     "input_audio_buffer.speech_started",
@@ -300,7 +302,7 @@ async def initialize_session(openai_ws):
                 {
                     "type": "function",
                     "name": "query_rag",
-                    "description": "Retrieve the most relevant historical and cultural information about 'La Casa de los Balcones' located in La Orotava, Tenerife.",
+                    "description": "Use always this tool to retrieve all historical and cultural information about 'La Casa de los Balcones' located in La Orotava, Tenerife.",
                     "parameters": {
                         "type": "object",
                         "properties": {
